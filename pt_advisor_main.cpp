@@ -6,7 +6,6 @@
 #include <QFileInfo>
 #include <QStringList>
 #include <iostream>
-#include <limits>
 
 static QString resolveDefaultDataFile(const QString &relativeUnderDataCase1)
 {
@@ -21,14 +20,6 @@ static QString resolveDefaultDataFile(const QString &relativeUnderDataCase1)
             return QFileInfo(p).absoluteFilePath();
     }
     return QDir::current().filePath(QStringLiteral("data/case1/%1").arg(relativeUnderDataCase1));
-}
-
-static void pauseConsole()
-{
-    std::cout << "\nPress Enter to continue...";
-    std::cout.flush();
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    std::cin.get();
 }
 
 static void printTopJourneys(PtGraphAdvisor &g, const QString &origin, const QString &dest, PtPreference pref, int topK)
@@ -68,91 +59,51 @@ int main(int argc, char *argv[])
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("pt_advisor"));
 
-    QString stopsPath;
-    QString segsPath;
-    if (argc >= 3) {
-        stopsPath = QString::fromLocal8Bit(argv[1]);
-        segsPath = QString::fromLocal8Bit(argv[2]);
-    } else {
-        stopsPath = resolveDefaultDataFile(QStringLiteral("stops.csv"));
-        segsPath = resolveDefaultDataFile(QStringLiteral("segments.csv"));
+    if (argc < 5) {
+        std::cerr << "Usage: pt_advisor <stops.csv> <segments.csv> <origin_stop_id> <dest_stop_id> [preference]\n"
+                     "  preference: cheapest | fastest | fewest_segments | fewest_transfers (default: fastest)\n"
+                     "\n"
+                     "For interactive input, use the Smart Public Transport Advisor desktop app:\n"
+                     "  open the Graph journey planner dock (origin, destination, preference, Find).\n"
+                     "\n"
+                     "Example:\n"
+                     "  pt_advisor data/case1/stops.csv data/case1/segments.csv CEN_MTR WCH_MTR cheapest\n";
+        return 1;
     }
+
+    const QString stopsPath = QString::fromLocal8Bit(argv[1]);
+    const QString segsPath = QString::fromLocal8Bit(argv[2]);
+    const QString origin = QString::fromLocal8Bit(argv[3]).trimmed();
+    const QString dest = QString::fromLocal8Bit(argv[4]).trimmed();
+    QString prefStr = QStringLiteral("fastest");
+    if (argc >= 6)
+        prefStr = QString::fromLocal8Bit(argv[5]).trimmed();
 
     PtGraphAdvisor graph;
     QString err;
     if (!graph.loadFromFiles(stopsPath, segsPath, &err)) {
         std::cerr << "Load error: " << err.toStdString() << "\n";
-        std::cerr << "Usage: pt_advisor [stops.csv segments.csv]\n";
-        std::cerr << "Tried default: " << stopsPath.toStdString() << " / " << segsPath.toStdString() << "\n";
         return 1;
+    }
+
+    if (!graph.stops().contains(origin) || !graph.stops().contains(dest)) {
+        std::cerr << "Error: unknown stop id (origin or destination).\n";
+        return 1;
+    }
+    if (origin == dest) {
+        std::cerr << "Error: origin and destination are the same.\n";
+        return 1;
+    }
+
+    bool ok = false;
+    PtPreference pref = parsePreference(prefStr, &ok);
+    if (!ok) {
+        pref = PtPreference::Fastest;
+        std::cerr << "Invalid preference, using 'fastest'\n";
     }
 
     std::cout << "Loaded: " << graph.stops().size() << " stops, " << graph.directedSegmentCount()
               << " directed segments\n";
-    std::cout << "Stops file: " << stopsPath.toStdString() << "\n";
-    std::cout << "Segments file: " << segsPath.toStdString() << "\n";
-
-    for (;;) {
-        std::cout << "\n========================================\n";
-        std::cout << "1. List all stops\n";
-        std::cout << "2. Query journeys\n";
-        std::cout << "3. Network summary\n";
-        std::cout << "4. Exit\n";
-        std::cout << "Choose (1-4): ";
-        std::cout.flush();
-        std::string lineIn;
-        if (!std::getline(std::cin, lineIn))
-            break;
-        const QString choice = QString::fromStdString(lineIn).trimmed();
-
-        if (choice == QLatin1String("1")) {
-            std::cout << "\nStop list:\n";
-            QStringList ids = graph.stops().keys();
-            std::sort(ids.begin(), ids.end());
-            for (const QString &sid : ids) {
-                const PtStop st = graph.stops().value(sid);
-                std::cout << "  " << sid.toStdString() << ": " << st.name.toStdString() << " (" << st.stopType.toStdString()
-                          << ")\n";
-            }
-        } else if (choice == QLatin1String("2")) {
-            QStringList ids = graph.stops().keys();
-            std::sort(ids.begin(), ids.end());
-            std::cout << "\nAvailable stop IDs: " << ids.join(QLatin1String(", ")).toStdString() << "\n";
-            std::cout << "Origin stop ID: ";
-            std::cout.flush();
-            std::string o, d;
-            std::getline(std::cin, o);
-            std::cout << "Destination stop ID: ";
-            std::cout.flush();
-            std::getline(std::cin, d);
-            const QString origin = QString::fromStdString(o).trimmed();
-            const QString dest = QString::fromStdString(d).trimmed();
-            if (!graph.stops().contains(origin) || !graph.stops().contains(dest)) {
-                std::cout << "Error: stop does not exist\n";
-            } else if (origin == dest) {
-                std::cout << "Error: origin and destination are the same\n";
-            } else {
-                std::cout << "Preference (cheapest/fastest/fewest_segments/fewest_transfers): ";
-                std::cout.flush();
-                std::string prefStr;
-                std::getline(std::cin, prefStr);
-                bool ok = false;
-                PtPreference pref = parsePreference(QString::fromStdString(prefStr), &ok);
-                if (!ok) {
-                    pref = PtPreference::Fastest;
-                    std::cout << "Invalid preference, using 'fastest'\n";
-                }
-                printTopJourneys(graph, origin, dest, pref, 3);
-            }
-        } else if (choice == QLatin1String("3")) {
-            std::cout << "\n" << graph.summaryText().toStdString();
-        } else if (choice == QLatin1String("4")) {
-            std::cout << "Goodbye!\n";
-            break;
-        } else {
-            std::cout << "Invalid choice\n";
-        }
-        pauseConsole();
-    }
+    printTopJourneys(graph, origin, dest, pref, 3);
     return 0;
 }

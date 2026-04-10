@@ -27,3 +27,36 @@ DestinationValidation DestinationValidator::validate(const QString &raw)
     out.normalized = s;
     return out;
 }
+
+TripEndpointParse DestinationValidator::parseTripEndpoint(const QString &raw)
+{
+    TripEndpointParse out;
+    const QString s = raw.trimmed();
+    if (s.isEmpty()) {
+        out.error = QStringLiteral("Cannot be empty.");
+        return out;
+    }
+    const int comma = s.indexOf(QLatin1Char(','));
+    if (comma > 0 && comma < s.size() - 1) {
+        bool okLat = false;
+        bool okLng = false;
+        const double lat = s.left(comma).trimmed().toDouble(&okLat);
+        const double lng = s.mid(comma + 1).trimmed().toDouble(&okLng);
+        if (okLat && okLng && lat >= -90.0 && lat <= 90.0 && lng >= -180.0 && lng <= 180.0) {
+            out.ok = true;
+            out.isLatLng = true;
+            out.lat = lat;
+            out.lng = lng;
+            return out;
+        }
+    }
+    const DestinationValidation v = validate(s);
+    if (!v.ok) {
+        out.error = v.error;
+        return out;
+    }
+    out.ok = true;
+    out.isLatLng = false;
+    out.normalizedAddress = v.normalized;
+    return out;
+}

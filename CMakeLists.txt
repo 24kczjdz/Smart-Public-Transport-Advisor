@@ -22,6 +22,10 @@ qt_add_executable(TransportAdvisor
     DestinationValidator.h
     LocalBusCsvModel.cpp
     LocalBusCsvModel.h
+    PtGraphAdvisor.cpp
+    PtGraphAdvisor.h
+    PtGraphTypes.cpp
+    PtGraphTypes.h
     HkGridToWgs84.h
     resources.qrc
 )

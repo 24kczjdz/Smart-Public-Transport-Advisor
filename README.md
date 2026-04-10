@@ -112,9 +112,9 @@ After changing `html/map.html`, **rebuild** so Qt’s resource file (`resources.
 
 ---
 
-## Graph journey planner (`pt_advisor`) — coursework CSV model
+## Graph journey planner — coursework CSV model
 
-Separate **console** program implements the **Stop / Segment / Journey** model from your spec: load `stops.csv` + `segments.csv`, **DFS** simple paths (unique by stop sequence, `max_segments` default 8), rank by:
+The **Stop / Segment / Journey** model from your spec is in **`PtGraphAdvisor`**: load `stops.csv` + `segments.csv`, **DFS** simple paths (unique by stop sequence, `max_segments` default 8), rank by:
 
 | Preference | Sort key |
 |------------|----------|
@@ -125,21 +125,24 @@ Separate **console** program implements the **Stop / Segment / Journey** model f
 
 **Transfer count** = number of adjacent segment pairs where `mode` differs (same rule as the Python reference).
 
-**Build only this target:**
+### In the desktop app (interactive)
+
+Run **TransportAdvisor** and use the **Graph journey planner** dock (right side by default). Choose **origin** and **destination** from the dropdowns, pick a **preference**, then **Find top journeys**. The app looks for `data/case1/stops.csv` and `data/case1/segments.csv` next to the binary, under the build tree, or from the current working directory (same rules as below).
+
+### Optional: `pt_advisor` CLI (scripts / marking)
+
+Non-interactive one-shot query (no stdin menu):
 
 ```bash
 cmake --build build --target pt_advisor
+./build/pt_advisor data/case1/stops.csv data/case1/segments.csv CEN_MTR WCH_MTR cheapest
 ```
 
-**Run** (from `TransportAdvisor` directory so `data/case1/` resolves, or pass paths explicitly):
-
-```bash
-./build/pt_advisor data/case1/stops.csv data/case1/segments.csv
-```
+Arguments: `stops.csv` `segments.csv` `origin_stop_id` `dest_stop_id` `[preference]`. For usage help, run `pt_advisor` with fewer than five arguments; it will remind you to use the desktop app for interactive input.
 
 Sample **Case 1** network is under `data/case1/`. Segment files may include `#` comment lines and blank lines (ignored). Headers accept `stop_id,stop_name,type` and optional `region`; segments use `from,to,duration,cost,mode` (aliases `from_stop` / `to_stop` supported).
 
-**Relation to the Qt map app:** `LocalBusCsvModel` still uses **real TD bus CSVs** for map polylines (heuristic). `PtGraphAdvisor` is the **explicit graph + DFS** layer for reports and marking criteria. You can later call `PtGraphAdvisor` from C++ behind the Qt UI if you want one binary.
+**Relation to the Qt map app:** `LocalBusCsvModel` still uses **real TD bus CSVs** for map polylines (heuristic). `PtGraphAdvisor` is the **explicit graph + DFS** layer; the map app embeds the same planner in the **Graph journey planner** dock.
 
 ---
 
@@ -162,12 +165,14 @@ If `DATA_CSV_DIR` is unset, the app walks upward from the executable looking for
 
 ## Using the app
 
-1. **Locate me** — browser geolocation for your position (marker on map).
-2. **Destination** — validated (non-empty, 3–200 characters, no control characters).
-3. **Highlight on map** — choose whether the top suggestion is ranked by time, fare, or number of segments.
-4. **Plan (Google)** — geocode destination + transit directions; results ranked in the three lists; polylines decoded in JS.
-5. **Random CSV routes** — loads bus CSVs and shows random route segments (demo).
-6. **Plan from CSV** — matches destination text to stop/route names, nearest stop to you, heuristic paths; ranks similarly.
+1. **Starting from** — where you are: type an address or use **latitude, longitude** (default is a Hong Kong centre point; **Locate me** fills your GPS coordinates into this field).
+2. **Destination** — where you want to go (same validation; for **Plan from CSV** use a place name so stops can be matched, not coordinates only).
+3. **Locate me** — browser geolocation updates the map marker and the **Starting from** field.
+4. **Highlight on map** — choose whether the top suggestion is ranked by time, fare, or number of segments.
+5. **Plan (Google)** — geocode both endpoints (when needed) + transit directions; results ranked in the three lists; polylines decoded in JS.
+6. **Random CSV routes** — loads bus CSVs and shows random route segments (demo).
+7. **Plan from CSV** — matches **destination** text to stop/route names, **nearest stop to your starting point** (coordinates or geocoded address), heuristic paths; ranks similarly.
+8. **Graph journey planner** — dock panel (`data/case1` graph): pick origin and destination stops, preference, **Find top journeys** (same DFS model as `pt_advisor`).
 
 On startup, a short delay triggers **Random CSV routes** once (if the bridge and data are ready).
 
@@ -187,7 +192,7 @@ Qt **WebEngine** pages loaded from `qrc:` often send **no `Referer`** header. Op
 |------|------|
 | `CMakeLists.txt` | Qt6 target, sources, resources |
 | `main.cpp` | `QApplication` entry |
-| `MainWindow.*` | Window, `QWebEngineView`, `QWebChannel`, load `map.html`, read config |
+| `MainWindow.*` | Window, `QWebEngineView`, `QWebChannel`, load `map.html`, read config, coursework graph dock |
 | `TransportBridge.*` | Exposed to JS as `transport`: validation, Google flow, CSV preview/plan |
 | `RouteService.*` | `QNetworkAccessManager` → Geocoding + Directions JSON |
 | `RouteRanker.*` | Normalises Google routes into `byTime` / `byCost` / `byTransfers` |

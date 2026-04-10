@@ -53,7 +53,10 @@
   <div id="layout">
     <aside id="sidebar">
       <h1>Smart Public Transport Advisor</h1>
-      <p class="hint">Map: <strong>OpenStreetMap</strong> (Leaflet). <strong>CSV</strong> uses your HK bus files. Optional <strong>Plan (Google)</strong> needs a server API key (Geocoding + Directions) — no Google Maps JavaScript API required.</p>
+      <p class="hint">Map: <strong>OpenStreetMap</strong> (Leaflet). <strong>CSV</strong> uses your HK bus files. Optional <strong>Plan (Google)</strong> needs a server API key (Geocoding + Directions) — no Google Maps JavaScript API required. Enter <strong>both</strong> where you start and where you go; use <strong>Locate me</strong> to fill coordinates for your starting point.</p>
+
+      <label for="origin">Starting from</label>
+      <input id="origin" type="text" maxlength="200" placeholder="Address or latitude, longitude" autocomplete="off" />
 
       <label for="dest">Destination</label>
       <input id="dest" type="text" maxlength="200" placeholder="e.g. Hong Kong University, Pok Fu Lam" autocomplete="off" />
@@ -255,6 +258,8 @@
           originLat = pos.coords.latitude;
           originLng = pos.coords.longitude;
           const ll = [originLat, originLng];
+          const o = document.getElementById("origin");
+          if (o) o.value = originLat.toFixed(6) + ", " + originLng.toFixed(6);
           if (map) {
             map.panTo(ll);
             userMarker.setLatLng(ll);
@@ -271,17 +276,23 @@
         setErr("Set GOOGLE_MAPS_API_KEY in config.ini (or env) for Google Geocoding + Directions.");
         return;
       }
+      const origin = document.getElementById("origin").value;
       const dest = document.getElementById("dest").value;
       if (!window.transportBridge) {
         setErr("Native bridge not ready. Open this UI from the Qt app.");
         return;
       }
-      const clientErr = window.transportBridge.validateDestination(dest);
-      if (clientErr) {
-        setErr(clientErr);
+      const errO = window.transportBridge.validateTripEndpoint(origin);
+      if (errO) {
+        setErr("Starting point: " + errO);
         return;
       }
-      window.transportBridge.searchTransitRoutes(dest, originLat, originLng);
+      const errD = window.transportBridge.validateTripEndpoint(dest);
+      if (errD) {
+        setErr("Destination: " + errD);
+        return;
+      }
+      window.transportBridge.searchTransitRoutes(origin, dest);
     });
 
     document.getElementById("btnCsvPreview").addEventListener("click", function() {
@@ -295,17 +306,23 @@
 
     document.getElementById("btnCsvPlan").addEventListener("click", function() {
       clearErr();
+      const origin = document.getElementById("origin").value;
       const dest = document.getElementById("dest").value;
       if (!window.transportBridge) {
         setErr("Native bridge not ready.");
         return;
       }
-      const clientErr = window.transportBridge.validateDestination(dest);
-      if (clientErr) {
-        setErr(clientErr);
+      const errO = window.transportBridge.validateTripEndpoint(origin);
+      if (errO) {
+        setErr("Starting point: " + errO);
         return;
       }
-      window.transportBridge.searchFromLocalCsv(dest, originLat, originLng);
+      const errD = window.transportBridge.validateTripEndpoint(dest);
+      if (errD) {
+        setErr("Destination: " + errD);
+        return;
+      }
+      window.transportBridge.searchFromLocalCsv(origin, dest);
     });
 
     (async function() {
@@ -322,6 +339,8 @@
         setErr("Could not load map (network?). Check internet for Leaflet/OSM tiles.");
         return;
       }
+
+      document.getElementById("origin").value = originLat.toFixed(6) + ", " + originLng.toFixed(6);
 
       setTimeout(function() {
         if (window.transportBridge)
