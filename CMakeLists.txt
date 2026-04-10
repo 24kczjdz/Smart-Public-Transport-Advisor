@@ -37,3 +37,17 @@ target_link_libraries(TransportAdvisor PRIVATE
 if(APPLE)
     set_target_properties(TransportAdvisor PROPERTIES MACOSX_BUNDLE TRUE)
 endif()
+
+# Text-mode graph journey planner (coursework model: stops/segments CSV, DFS, preferences)
+qt_add_executable(pt_advisor
+    pt_advisor_main.cpp
+    PtGraphAdvisor.cpp
+    PtGraphAdvisor.h
+    PtGraphTypes.cpp
+    PtGraphTypes.h
+)
+target_link_libraries(pt_advisor PRIVATE Qt6::Core)
+set_target_properties(pt_advisor PROPERTIES WIN32_EXECUTABLE FALSE)
+if(APPLE)
+    set_target_properties(pt_advisor PROPERTIES MACOSX_BUNDLE FALSE)
+endif()
