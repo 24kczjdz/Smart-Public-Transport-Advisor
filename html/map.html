@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Public Transport Advisor</title>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    #layout { display: flex; height: 100%; }
+    #sidebar {
+      width: 380px; max-width: 42vw; padding: 14px 16px;
+      background: #0f172a; color: #e2e8f0; overflow-y: auto;
+      border-right: 1px solid #1e293b;
+    }
+    h1 { font-size: 1.05rem; margin: 0 0 10px; font-weight: 650; color: #f8fafc; }
+    p.hint { font-size: 0.78rem; color: #94a3b8; margin: 0 0 12px; line-height: 1.35; }
+    label { display: block; font-size: 0.75rem; color: #94a3b8; margin: 10px 0 4px; }
+    input[type="text"] {
+      width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid #334155;
+      background: #020617; color: #f1f5f9; font-size: 0.9rem;
+    }
+    input[type="text"]:focus { outline: 2px solid #38bdf8; border-color: #38bdf8; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      flex: 1; min-width: 120px; padding: 9px 10px; border-radius: 8px; border: none;
+      font-weight: 600; cursor: pointer; font-size: 0.85rem;
+    }
+    button.primary { background: #38bdf8; color: #0f172a; }
+    button.secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .err { color: #fecaca; font-size: 0.8rem; margin-top: 8px; min-height: 1.2em; }
+    .info { color: #94a3b8; font-size: 0.72rem; margin-top: 6px; line-height: 1.35; }
+    #map { flex: 1; min-width: 0; z-index: 0; }
+    .section-title { font-size: 0.8rem; color: #cbd5e1; margin: 16px 0 6px; font-weight: 600; }
+    .route-card {
+      background: #020617; border: 1px solid #1e293b; border-radius: 10px;
+      padding: 8px 10px; margin-bottom: 8px; cursor: pointer; font-size: 0.78rem;
+    }
+    .route-card:hover { border-color: #38bdf8; }
+    .route-card strong { color: #f8fafc; }
+    .meta { color: #94a3b8; margin-top: 4px; line-height: 1.35; }
+    select {
+      width: 100%; margin-top: 6px; padding: 8px; border-radius: 8px;
+      background: #020617; color: #e2e8f0; border: 1px solid #334155;
+    }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #1e293b; font-size: 0.7rem; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div id="layout">
+    <aside id="sidebar">
+      <h1>Smart Public Transport Advisor</h1>
+      <p class="hint">Map: <strong>OpenStreetMap</strong> (Leaflet). <strong>CSV</strong> uses your HK bus files. Optional <strong>Plan (Google)</strong> needs a server API key (Geocoding + Directions) — no Google Maps JavaScript API required.</p>
+
+      <label for="dest">Destination</label>
+      <input id="dest" type="text" maxlength="200" placeholder="e.g. Hong Kong University, Pok Fu Lam" autocomplete="off" />
+      <div id="valErr" class="err"></div>
+      <div id="keyHint" class="info"></div>
+
+      <label for="pref">Highlight on map</label>
+      <select id="pref">
+        <option value="time">Fastest (shortest duration)</option>
+        <option value="cost">Cheapest (lowest fare, if known)</option>
+        <option value="transfers">Fewest transit segments</option>
+      </select>
+
+      <div class="row">
+        <button class="secondary" id="btnLoc" type="button">Locate me</button>
+        <button class="primary" id="btnGo" type="button">Plan (Google)</button>
+      </div>
+      <div class="row">
+        <button class="secondary" id="btnCsvPreview" type="button">Random CSV routes</button>
+        <button class="primary" id="btnCsvPlan" type="button" style="background:#34d399;color:#042f2e;">Plan from CSV</button>
+      </div>
+
+      <div class="section-title">Suggestions — fastest</div>
+      <div id="listTime"></div>
+      <div class="section-title">Suggestions — fare</div>
+      <div id="listCost"></div>
+      <div class="section-title">Suggestions — fewer segments</div>
+      <div id="listXfer"></div>
+    </aside>
+    <div id="map"></div>
+  </div>
+
+  <script>
+    const GOOGLE_KEY = "%%GOOGLE_MAPS_API_KEY%%";
+    const hasGoogleKey = GOOGLE_KEY && GOOGLE_KEY.indexOf("%%") !== 0 && GOOGLE_KEY.length > 10;
+
+    let map = null;
+    let userMarker = null;
+    let originLat = 22.3193, originLng = 114.1694;
+    let lastPayload = null;
+    let polyOverlays = [];
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    /** Decode Google Directions overview_polyline without loading Maps JS API */
+    function decodeGooglePolyline(encoded) {
+      if (!encoded || typeof encoded !== "string") return [];
+      let index = 0;
+      let lat = 0, lng = 0;
+      const coordinates = [];
+      while (index < encoded.length) {
+        let b, shift = 0, result = 0;
+        do {
+          b = encoded.charCodeAt(index++) - 63;
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        } while (b >= 0x20);
+        const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+        lat += dlat;
+        shift = 0;
+        result = 0;
+        do {
+          b = encoded.charCodeAt(index++) - 63;
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        } while (b >= 0x20);
+        const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+        lng += dlng;
+        coordinates.push([lat * 1e-5, lng * 1e-5]);
+      }
+      return coordinates;
+    }
+
+    function clearErr() { document.getElementById("valErr").textContent = ""; }
+    function setErr(t) { document.getElementById("valErr").textContent = t || ""; }
+
+    function clearPolylines() {
+      polyOverlays.forEach(layer => { if (map && layer) map.removeLayer(layer); });
+      polyOverlays = [];
+    }
+
+    /** Leaflet LatLng tuples: [lat, lng] */
+    function routeToPathLatLngs(r) {
+      if (!r) return null;
+      if (r.path && r.path.length >= 2)
+        return r.path.map(pair => [pair[0], pair[1]]);
+      if (r.polyline) {
+        const pts = decodeGooglePolyline(r.polyline);
+        return pts.length >= 2 ? pts : null;
+      }
+      return null;
+    }
+
+    function fitMapTo(latlngs, pad) {
+      if (!latlngs || latlngs.length < 2 || !map) return;
+      const b = L.latLngBounds(latlngs);
+      map.fitBounds(b, { padding: [pad || 48, pad || 48], maxZoom: 16 });
+    }
+
+    function drawHighlighted() {
+      if (!lastPayload || !map) return;
+      clearPolylines();
+      const pref = document.getElementById("pref").value;
+      const key = pref === "cost" ? "byCost" : pref === "transfers" ? "byTransfers" : "byTime";
+      const arr = lastPayload[key] || [];
+      const r = arr[0];
+      const latlngs = routeToPathLatLngs(r);
+      if (!latlngs || latlngs.length < 2) return;
+      const line = L.polyline(latlngs, { color: "#38bdf8", weight: 5, opacity: 0.95 }).addTo(map);
+      polyOverlays.push(line);
+      fitMapTo(latlngs, 48);
+    }
+
+    function cardHtml(r, idx) {
+      return "<div class='route-card' data-idx='" + idx + "'><strong>" + (r.summary || "Route") + "</strong>" +
+        "<div class='meta'>Duration: " + (r.durationText || "—") + "</div>" +
+        "<div class='meta'>Fare: " + (r.fareText || "—") + "</div>" +
+        "<div class='meta'>Transit segments: " + (r.transfers != null ? r.transfers : "—") + "</div>" +
+        "<span class='pill'>" + (r.endAddress || "") + "</span></div>";
+    }
+
+    function renderLists(payload) {
+      const bind = (id, arr, key) => {
+        const el = document.getElementById(id);
+        el.innerHTML = "";
+        if (!arr || !arr.length) {
+          el.innerHTML = "<div class='meta'>No routes returned. Try another time or destination.</div>";
+          return;
+        }
+        arr.forEach((r, i) => {
+          const wrap = document.createElement("div");
+          wrap.innerHTML = cardHtml(r, i);
+          const card = wrap.firstElementChild;
+          card.addEventListener("click", () => {
+            document.getElementById("pref").value = key === "byTime" ? "time" : key === "byCost" ? "cost" : "transfers";
+            const latlngs = routeToPathLatLngs(r);
+            if (!latlngs || latlngs.length < 2) return;
+            clearPolylines();
+            const line = L.polyline(latlngs, { color: "#a78bfa", weight: 5, opacity: 0.95 }).addTo(map);
+            polyOverlays.push(line);
+            fitMapTo(latlngs, 48);
+          });
+          el.appendChild(card);
+        });
+      };
+      bind("listTime", payload.byTime, "byTime");
+      bind("listCost", payload.byCost, "byCost");
+      bind("listXfer", payload.byTransfers, "byTransfers");
+    }
+
+    async function initMap() {
+      await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
+      map = L.map("map", { zoomControl: true }).setView([originLat, originLng], 13);
+      // OSM's tile.openstreetmap.org often returns 403 from Qt WebEngine (no Referer). Use Carto OSM tiles instead.
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
+        subdomains: "abcd",
+        maxZoom: 20
+      }).addTo(map);
+      userMarker = L.marker([originLat, originLng]).addTo(map).bindPopup("You");
+      document.getElementById("pref").addEventListener("change", drawHighlighted);
+    }
+
+    function setupBridge() {
+      if (typeof qt === "undefined" || !qt.webChannelTransport) return;
+      new QWebChannel(qt.webChannelTransport, function(channel) {
+        const transport = channel.objects.transport;
+        if (!transport) return;
+        transport.searchCompleted.connect(function(jsonStr) {
+          try {
+            lastPayload = JSON.parse(jsonStr);
+            renderLists(lastPayload);
+            drawHighlighted();
+          } catch (e) {
+            setErr("Could not parse route data.");
+          }
+        });
+        window.transportBridge = transport;
+      });
+    }
+
+    document.getElementById("btnLoc").addEventListener("click", function() {
+      if (!navigator.geolocation) {
+        setErr("Geolocation not available in this web view.");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          clearErr();
+          originLat = pos.coords.latitude;
+          originLng = pos.coords.longitude;
+          const ll = [originLat, originLng];
+          if (map) {
+            map.panTo(ll);
+            userMarker.setLatLng(ll);
+          }
+        },
+        function() { setErr("Could not read your location (permission or hardware)."); },
+        { enableHighAccuracy: true, timeout: 12000 }
+      );
+    });
+
+    document.getElementById("btnGo").addEventListener("click", function() {
+      clearErr();
+      if (!hasGoogleKey) {
+        setErr("Set GOOGLE_MAPS_API_KEY in config.ini (or env) for Google Geocoding + Directions.");
+        return;
+      }
+      const dest = document.getElementById("dest").value;
+      if (!window.transportBridge) {
+        setErr("Native bridge not ready. Open this UI from the Qt app.");
+        return;
+      }
+      const clientErr = window.transportBridge.validateDestination(dest);
+      if (clientErr) {
+        setErr(clientErr);
+        return;
+      }
+      window.transportBridge.searchTransitRoutes(dest, originLat, originLng);
+    });
+
+    document.getElementById("btnCsvPreview").addEventListener("click", function() {
+      clearErr();
+      if (!window.transportBridge) {
+        setErr("Native bridge not ready.");
+        return;
+      }
+      window.transportBridge.loadLocalRandomPreview();
+    });
+
+    document.getElementById("btnCsvPlan").addEventListener("click", function() {
+      clearErr();
+      const dest = document.getElementById("dest").value;
+      if (!window.transportBridge) {
+        setErr("Native bridge not ready.");
+        return;
+      }
+      const clientErr = window.transportBridge.validateDestination(dest);
+      if (clientErr) {
+        setErr(clientErr);
+        return;
+      }
+      window.transportBridge.searchFromLocalCsv(dest, originLat, originLng);
+    });
+
+    (async function() {
+      setupBridge();
+      const hint = document.getElementById("keyHint");
+      if (hasGoogleKey)
+        hint.textContent = "Google API key loaded — optional transit (Geocoding + Directions).";
+      else
+        hint.textContent = "No Google key — OSM + CSV work as-is. Add key only for Plan (Google).";
+
+      try {
+        await initMap();
+      } catch (e) {
+        setErr("Could not load map (network?). Check internet for Leaflet/OSM tiles.");
+        return;
+      }
+
+      setTimeout(function() {
+        if (window.transportBridge)
+          window.transportBridge.loadLocalRandomPreview();
+      }, 450);
+    })();
+  </script>
+</body>
+</html>
