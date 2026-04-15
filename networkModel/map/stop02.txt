@@ -1,0 +1,13 @@
+stop_id,stop_name,type
+Center_MTR,Central MTR,MTR
+Center_Bus,Central Bus,Bus
+North_MTR,North MTR,MTR
+North_Bus,North Bus,Bus
+East_MTR,East MTR,MTR
+East_Bus,East Bus,Bus
+South_MTR,South MTR,MTR
+South_Bus,South Bus,Bus
+West_MTR,West MTR,MTR
+West_Bus,West Bus,Bus
+NW_MTR,NorthWest MTR,MTR
+NW_Bus,NorthWest Bus,Bus
