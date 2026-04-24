@@ -14,6 +14,7 @@ public:
     bool loadFromFiles(const QString &stopsCsvPath, const QString &segmentsCsvPath, QString *errorOut = nullptr);
 
     const QHash<QString, PtStop> &stops() const { return m_stops; }
+    const QHash<QString, QVector<PtEdge>> &adjacency() const { return m_adj; }
     int directedSegmentCount() const;
 
     QVector<PtJourney> findJourneys(const QString &originId, const QString &destId, int maxSegments = 8) const;

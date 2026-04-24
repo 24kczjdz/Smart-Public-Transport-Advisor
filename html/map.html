@@ -10,11 +10,7 @@
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #layout { display: flex; height: 100%; }
-    #sidebar {
-      width: 380px; max-width: 42vw; padding: 14px 16px;
-      background: #0f172a; color: #e2e8f0; overflow-y: auto;
-      border-right: 1px solid #1e293b;
-    }
+    #sidebar { display: none; }
     h1 { font-size: 1.05rem; margin: 0 0 10px; font-weight: 650; color: #f8fafc; }
     p.hint { font-size: 0.78rem; color: #94a3b8; margin: 0 0 12px; line-height: 1.35; }
     label { display: block; font-size: 0.75rem; color: #94a3b8; margin: 10px 0 4px; }
@@ -33,7 +29,7 @@
     button:disabled { opacity: 0.45; cursor: not-allowed; }
     .err { color: #fecaca; font-size: 0.8rem; margin-top: 8px; min-height: 1.2em; }
     .info { color: #94a3b8; font-size: 0.72rem; margin-top: 6px; line-height: 1.35; }
-    #map { flex: 1; min-width: 0; z-index: 0; }
+    #map { flex: 1; min-width: 0; width: 100%; z-index: 0; }
     .section-title { font-size: 0.8rem; color: #cbd5e1; margin: 16px 0 6px; font-weight: 600; }
     .route-card {
       background: #020617; border: 1px solid #1e293b; border-radius: 10px;
@@ -98,6 +94,7 @@
     let originLat = 22.3193, originLng = 114.1694;
     let lastPayload = null;
     let polyOverlays = [];
+    let networkLayers = [];
 
     function loadScript(src) {
       return new Promise((resolve, reject) => {
@@ -147,6 +144,11 @@
       polyOverlays = [];
     }
 
+    function clearNetworkOverlay() {
+      networkLayers.forEach(layer => { if (map && layer) map.removeLayer(layer); });
+      networkLayers = [];
+    }
+
     /** Leaflet LatLng tuples: [lat, lng] */
     function routeToPathLatLngs(r) {
       if (!r) return null;
@@ -178,6 +180,48 @@
       polyOverlays.push(line);
       fitMapTo(latlngs, 48);
     }
+
+    // Called by Qt dock UI to draw a selected coursework route.
+    window.highlightCourseworkRoute = function(payload) {
+      if (!payload || !payload.path || payload.path.length < 2 || !map) return;
+      clearPolylines();
+      const line = L.polyline(payload.path, { color: "#a78bfa", weight: 6, opacity: 0.95 }).addTo(map);
+      polyOverlays.push(line);
+      fitMapTo(payload.path, 48);
+    };
+
+    // Called by Qt dock UI to render all available stops/segments.
+    window.showCourseworkNetworkOverlay = function(payload) {
+      if (!payload || !map) return;
+      clearNetworkOverlay();
+
+      const segs = payload.segments || [];
+      segs.forEach(seg => {
+        if (!seg.from || !seg.to) return;
+        const color = seg.mode === "MTR" ? "#1d4ed8" : (seg.mode === "Bus" ? "#dc2626" : "#64748b");
+        const line = L.polyline([seg.from, seg.to], {
+          color,
+          weight: 2.5,
+          opacity: 0.5
+        }).addTo(map);
+        networkLayers.push(line);
+      });
+
+      const nodes = payload.nodes || [];
+      nodes.forEach(n => {
+        if (typeof n.lat !== "number" || typeof n.lng !== "number") return;
+        const fill = n.type === "MTR" ? "#2563eb" : (n.type === "Bus" ? "#ef4444" : "#475569");
+        const circle = L.circleMarker([n.lat, n.lng], {
+          radius: 7,
+          color: "#ffffff",
+          weight: 1.5,
+          fillColor: fill,
+          fillOpacity: 1.0
+        }).addTo(map);
+        circle.bindTooltip((n.id || "") + " - " + (n.name || ""), { direction: "top", opacity: 0.9 });
+        networkLayers.push(circle);
+      });
+    };
 
     function cardHtml(r, idx) {
       return "<div class='route-card' data-idx='" + idx + "'><strong>" + (r.summary || "Route") + "</strong>" +
