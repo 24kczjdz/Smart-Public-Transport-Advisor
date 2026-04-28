@@ -310,7 +310,7 @@ class GraphDemoApp(QMainWindow):
             return
 
         pref = self.pref_combo.currentText()
-        self.journeys = self.nv02.find_journeys(self.graph, origin, dest, max_len=10)
+        self.journeys = self.nv02.find_journeys(self.graph, origin, dest, max_len=50)
         if not self.journeys:
             QMessageBox.information(self, "No route", "No journey was found.")
             self.result_text.setPlainText("No journey found.")
