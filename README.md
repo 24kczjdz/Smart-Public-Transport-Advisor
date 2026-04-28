@@ -228,7 +228,7 @@ Top route is the MTR path `East Tsim Sha Tsui → Hong Kong [Tuen_Ma_Line] Hong 
 
 ## Error Handling
 
-### 01 – Invalid input: same origin and destination
+### Example 01 – Invalid input: same origin and destination
 
 **Purpose:** Verify that the program handles invalid input gracefully without crashing.
 
@@ -237,3 +237,13 @@ Top route is the MTR path `East Tsim Sha Tsui → Hong Kong [Tuen_Ma_Line] Hong 
 - Click **Compute route**
 
 **Expected:** A warning dialog appears stating "Origin and destination must differ." No crash occurs.
+
+### Example 02 – Invalid map set: missing keys
+
+**Purpose:** Verify that the program handles invalid map set import
+
+**Steps:**
+- Choose map set 404 (a set missing the column for "line")
+
+**Expected:** 
+A warning dialog appears stating "Segments file '{segments_file}' is missing required column(s): , Expected columns: from, to, duration, cost, mode, line" No crash occurs.
