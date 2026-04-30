@@ -48,6 +48,15 @@ def load_network(stops_file, segments_file):
     stops = {}
     with open(stops_file) as f:
         reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError(f"Stops file '{stops_file}' is empty or contains no valid data.")
+        required = {'stop_id', 'stop_name', 'type'}
+        missing = required - set(reader.fieldnames)
+        if missing:
+            raise ValueError(
+                f"Stops file '{stops_file}' is missing required column(s): {', '.join(sorted(missing))}.\n"
+                f"Expected columns: stop_id, stop_name, type"
+            )
         for row in reader:
             stops[row['stop_id']] = (row['stop_name'], row['type'])
     if not stops:
