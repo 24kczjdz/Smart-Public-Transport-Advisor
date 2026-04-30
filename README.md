@@ -70,6 +70,10 @@ python graph_demo/app.py
 
 The app loads `map/stop01.txt` and `map/seg01.txt` by default. Use the **Select map files** button or edit the path fields manually to switch to a different network.
 
+If you fail to run the progfram, make sure you select a right python interpreter. (For example, to select a python interpreter in VS Code, 1. Ctrl + Shift + P, 2. Python: Select Interpreter)
+
+
+
 ### Workflow
 
 1. **Select a map set** from the **Map set** drop-down (e.g. `01`, `02`, `07`). The app scans the `map/` directory automatically and loads the network immediately. Alternatively, type file paths manually and click **Load txt files**, or use **Select map files…** to browse.
