@@ -70,9 +70,10 @@ python graph_demo/app.py
 
 The app loads `map/stop01.txt` and `map/seg01.txt` by default. Use the **Select map files** button or edit the path fields manually to switch to a different network.
 
-If you fail to run the progfram, make sure you select a right python interpreter. 
+If you fail to run the program, checkl if you select a right python interpreter. 
+(select python interpreter in VS Code: 1. Ctrl + Shift + P, 2. Python: Select Interpreter)
 
-(For example, to select a python interpreter in VS Code, 1. Ctrl + Shift + P, 2. Python: Select Interpreter)
+If you still cannot run the program, switch to text-based Interface (see Alternative section).
 
 
 ### Workflow
@@ -82,6 +83,37 @@ If you fail to run the progfram, make sure you select a right python interpreter
 3. Choose a **Preference** (`fastest`, `cheapest`, `fewest_segments`, or `fewest_transfers`).
 4. Set **Path index** to select which ranked journey to highlight on the graph (0 = best).
 5. Click **Compute route** — route summaries appear in the text area and the selected route is highlighted on the graph canvas in the colour of each transit line.
+
+---
+
+## Alternative: Text-Based Interface (if GUI fails)
+
+If `app.py` cannot be launched (e.g. due to a missing or incompatible `PyQt6` installation), the core functionality is available as a text-based CLI via `nv02.py`, which has **no external dependencies**.
+
+```bash
+python nv02.py
+```
+
+On startup it loads `map/stop01.txt` and `map/seg01.txt`. The menu offers the same operations as the GUI:
+
+```
+1. List all stops
+2. Query journeys
+3. Network summary
+4. Load new network
+5. Exit
+```
+
+To run the same test cases described below, choose **option 4** and enter the paths when prompted:
+
+```
+Stops file path: map/stop07.txt
+Segments file path: map/seg07.txt
+```
+
+Then use **option 2** to query a journey and enter the origin, destination, and preference (`fastest`, `cheapest`, `fewest_segments`, or `fewest_transfers`).
+
+> Note: `nv02.py` prints results as plain text and does not display a graph visualisation.
 
 ---
 
