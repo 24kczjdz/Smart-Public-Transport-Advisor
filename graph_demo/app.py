@@ -110,6 +110,8 @@ class GraphDemoApp(QMainWindow):
         self.stops = {}
         self.graph = {}
         self.journeys = []
+        self.current_origin = None
+        self.current_dest = None
 
         self._build_ui()
         self.load_network_data()
@@ -118,7 +120,7 @@ class GraphDemoApp(QMainWindow):
         """Construct and arrange all Qt widgets inside the main window.
 
         Layout (top to bottom):
-            top_layout    – Map-set quick selector and "Select map files…" button.
+            top_layout    – Map-set quick selector and "Or select map files manually…" button.
             file_layout   – Stops / segments path inputs and Load button.
             select_layout – Origin, destination, preference, path-index controls.
             result_text   – Read-only text area for route summaries.
@@ -136,7 +138,7 @@ class GraphDemoApp(QMainWindow):
             self.map_set_combo.addItem(suffix)
         self.map_set_combo.currentTextChanged.connect(self._on_map_set_selected)
         top_layout.addWidget(self.map_set_combo)
-        self.preview_button = QPushButton("Select map files...")
+        self.preview_button = QPushButton("Or select map files manually…")
         self.preview_button.clicked.connect(self.choose_csv_files)
         top_layout.addWidget(self.preview_button)
         top_layout.addStretch()
@@ -159,10 +161,13 @@ class GraphDemoApp(QMainWindow):
         self.origin_combo = QComboBox()
         self.dest_combo = QComboBox()
         self.pref_combo = QComboBox()
-        self.pref_combo.addItems(["fastest", "cheapest", "fewest_segments", "fewest_transfers"])
+        self.pref_combo.addItems(["fastest", "cheapest", "fewest_stops", "fewest_transfers"])
         self.path_index_spin = QSpinBox()
-        self.path_index_spin.setMinimum(0)
-        self.path_index_spin.setValue(0)
+        self.path_index_spin.setMinimum(1)
+        self.path_index_spin.setMaximum(5)
+        self.path_index_spin.setValue(1)
+        self.path_index_spin.setEnabled(False)
+        self.path_index_spin.valueChanged.connect(self._on_path_index_changed)
         self.route_button = QPushButton("Compute route")
         self.route_button.clicked.connect(self.compute_route)
 
@@ -172,8 +177,6 @@ class GraphDemoApp(QMainWindow):
         select_layout.addWidget(self.dest_combo, 0, 3)
         select_layout.addWidget(QLabel("Preference:"), 1, 0)
         select_layout.addWidget(self.pref_combo, 1, 1)
-        select_layout.addWidget(QLabel("Path index:"), 1, 2)
-        select_layout.addWidget(self.path_index_spin, 1, 3)
         select_layout.addWidget(self.route_button, 2, 0, 1, 4)
 
         # --- Route result text area ---
@@ -191,6 +194,11 @@ class GraphDemoApp(QMainWindow):
         main_layout.addWidget(QLabel("Route result:"))
         main_layout.addWidget(self.result_text)
         main_layout.addWidget(QLabel("Graph visualization:"))
+        route_index_layout = QHBoxLayout()
+        route_index_layout.addWidget(QLabel("Route index:"))
+        route_index_layout.addWidget(self.path_index_spin)
+        route_index_layout.addStretch()
+        main_layout.addLayout(route_index_layout)
         main_layout.addWidget(self.canvas, 1)
 
         self.setCentralWidget(container)
@@ -280,7 +288,12 @@ class GraphDemoApp(QMainWindow):
 
         self.result_text.clear()
         self.draw_graph([], None, None)
-        self.path_index_spin.setMaximum(max(0, len(ids) - 1))
+        self.journeys = []
+        self.current_origin = None
+        self.current_dest = None
+        self.path_index_spin.setValue(1)
+        self.path_index_spin.setMaximum(5)
+        self.path_index_spin.setEnabled(False)
         self.result_text.setPlainText(f"Loaded {len(self.stops)} stops and {sum(len(v) for v in self.graph.values())} segments.")
 
     def compute_route(self):
@@ -318,7 +331,9 @@ class GraphDemoApp(QMainWindow):
             return
 
         self.journeys = self.sort_journeys(self.journeys, pref)
-        self.path_index_spin.setMaximum(max(0, len(self.journeys) - 1))
+        self.path_index_spin.setMaximum(min(5, len(self.journeys)))
+        self.path_index_spin.setValue(1)
+        self.path_index_spin.setEnabled(True)
         self.nv02.rank_and_print(self.journeys, self.stops, origin, dest, pref, top_k=5)
 
         # Build plain-text summary for the top-5 journeys
@@ -349,12 +364,21 @@ class GraphDemoApp(QMainWindow):
             output.append("\n".join(lines))
         self.result_text.setPlainText("\n\n".join(output))
 
-        # Highlight the journey selected by the spinbox
-        index = self.path_index_spin.value()
-        if index >= len(self.journeys):
-            index = 0
+        # Highlight the journey selected by the spinbox (1-based to match #1 #2 in result text)
+        self.current_origin = origin
+        self.current_dest = dest
+        index = min(self.path_index_spin.value(), len(self.journeys)) - 1
         route_edges = self.highlight_route_edges(self.journeys[index], origin)
         self.draw_graph(route_edges, origin, dest)
+
+    def _on_path_index_changed(self, index):
+        """Redraw the graph with the route at the new spinbox index (1-based)."""
+        if not self.journeys or self.current_origin is None or self.current_dest is None:
+            self.result_text.setPlainText("No route computed yet. Please click 'Compute route' first.")
+            return
+        journey_index = min(index, len(self.journeys)) - 1
+        route_edges = self.highlight_route_edges(self.journeys[journey_index], self.current_origin)
+        self.draw_graph(route_edges, self.current_origin, self.current_dest)
 
     def highlight_route_edges(self, journey, origin):
         """Convert a journey path into a list of directed (from, to) edge tuples.
@@ -381,14 +405,14 @@ class GraphDemoApp(QMainWindow):
         Sorting keys by preference:
             'cheapest':        (cost, duration, segment_count)
             'fastest':         (duration, cost, segment_count)
-            'fewest_segments': (segment_count, duration, cost)
+            'fewest_stops': (segment_count, duration, cost)
 
         Walk-only segments are excluded when counting transfers, consistent
         with nv02.rank_and_print.
 
         Args:
             journeys:   List of paths from nv02.find_journeys.
-            preference: One of 'cheapest', 'fastest', 'fewest_segments'.
+            preference: One of 'cheapest', 'fastest', 'fewest_stops'.
 
         Returns:
             New sorted list of paths (ascending by the chosen key).
@@ -405,7 +429,7 @@ class GraphDemoApp(QMainWindow):
                 return (duration, cost, len(path))
             if preference == 'fewest_transfers':
                 return (transfers, duration, cost)
-            return (len(path), duration, cost)  # fewest_segments
+            return (len(path), duration, cost)  # fewest_stops
 
         return sorted(journeys, key=score)
 
