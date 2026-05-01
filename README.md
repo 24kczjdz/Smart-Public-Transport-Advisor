@@ -111,7 +111,25 @@ The menu offers the same operations as the GUI:
 
 **Option 4** also shows the auto-discovered map sets as numbered shortcuts, with `0` to fall back to manual path entry.
 
-When querying a journey (**option 2**), the preference prompt accepts either a number or the full name:
+**Option 1** displays a formatted, numbered stop table:
+
+```
+   No.  Stop ID            Name                Type
+        -----------------  ------------------  ----
+     1  ADM_BUS            Admiralty           Bus
+     2  ADM_MTR            Admiralty           MTR
+    12  EAST_TST_MTR       East Tsim Sha Tsui  MTR
+   ...
+```
+
+**Option 2** shows the same table before asking for input. Stops can be entered as a **number** from the table, or as a **stop ID** (case-insensitive):
+
+```
+Origin (No. or ID): 12          ← number
+Destination (No. or ID): ken_mtr  ← ID, any case
+```
+
+The preference prompt accepts either a number or the full name:
 
 ```
 Preference:  1. fastest  2. cheapest  3. fewest_stops  4. fewest_transfers

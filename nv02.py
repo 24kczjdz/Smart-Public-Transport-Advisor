@@ -116,7 +116,56 @@ def scan_map_sets(base_dir=None):
     return results
 
 # ------------------------------------------------------------
-# 3. Generate all simple paths using DFS (with duplicate prevention)
+# 3. Stop index helpers (numbered display + flexible input)
+# ------------------------------------------------------------
+def _stop_index(stops):
+    """Build a numbered, sorted list of stops and a case-insensitive lookup map.
+
+    Returns:
+        ordered:   list of (num, stop_id, name, typ) – 1-based numbering.
+        upper_map: dict mapping uppercase stop_id -> canonical stop_id.
+    """
+    ordered = []
+    upper_map = {}
+    for num, sid in enumerate(sorted(stops.keys()), 1):
+        name, typ = stops[sid]
+        ordered.append((num, sid, name, typ))
+        upper_map[sid.upper()] = sid
+    return ordered, upper_map
+
+
+def _resolve_stop(token, ordered, upper_map):
+    """Resolve user input to a canonical stop_id.
+
+    Accepts:
+        - A 1-based integer index shown in the stop table.
+        - A stop ID string (case-insensitive).
+
+    Returns the canonical stop_id, or None if not found.
+    """
+    token = token.strip()
+    if token.isdigit():
+        n = int(token)
+        if 1 <= n <= len(ordered):
+            return ordered[n - 1][1]
+        return None
+    return upper_map.get(token.upper())
+
+
+def _print_stop_table(ordered):
+    """Print a formatted, numbered stop table."""
+    id_w   = max(len(sid)  for _, sid,  *_ in ordered)
+    name_w = max(len(name) for _, _, name, _ in ordered)
+    header = f"  {'No.':>4}  {'Stop ID':<{id_w}}  {'Name':<{name_w}}  Type"
+    sep    = f"  {'':>4}  {'-'*id_w}  {'-'*name_w}  ----"
+    print(header)
+    print(sep)
+    for num, sid, name, typ in ordered:
+        print(f"  {num:>4}  {sid:<{id_w}}  {name:<{name_w}}  {typ}")
+
+
+# ------------------------------------------------------------
+# 4. Generate all simple paths using DFS (with duplicate prevention)
 # ------------------------------------------------------------
 def find_journeys(graph, origin, dest, max_len=8, max_paths=200):
     """Find all simple paths from origin to dest using depth-first search.
@@ -281,14 +330,21 @@ def main():
         if choice in ('1', '2', '3') and not stops:
             print("No network loaded. Please use option 4 to load a network file first.")
         elif choice == '1':
-            print("\nStop list:")
-            for sid, (name, typ) in sorted(stops.items()):
-                print(f"  {sid}: {name} ({typ})")
+            ordered, _ = _stop_index(stops)
+            print()
+            _print_stop_table(ordered)
         elif choice == '2':
-            print("\nAvailable stop IDs:", ", ".join(sorted(stops.keys())))
-            origin = input("Origin stop ID: ").strip()
-            dest = input("Destination stop ID: ").strip()
-            if origin not in stops or dest not in stops:
+            ordered, upper_map = _stop_index(stops)
+            print()
+            _print_stop_table(ordered)
+            origin_raw = input("\nOrigin (No. or ID): ").strip()
+            origin = _resolve_stop(origin_raw, ordered, upper_map)
+            if origin is None:
+                print("Error: stop does not exist")
+                continue
+            dest_raw = input("Destination (No. or ID): ").strip()
+            dest = _resolve_stop(dest_raw, ordered, upper_map)
+            if dest is None:
                 print("Error: stop does not exist")
                 continue
             if origin == dest:
