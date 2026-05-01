@@ -70,19 +70,13 @@ python graph_demo/app.py
 
 The app loads `map/stop01.txt` and `map/seg01.txt` by default. Use the **Select map files** button or edit the path fields manually to switch to a different network.
 
-If you fail to run the program, checkl if you select a right python interpreter. 
-(select python interpreter in VS Code: 1. Ctrl + Shift + P, 2. Python: Select Interpreter)
-
-If you still cannot run the program, switch to text-based Interface (see Alternative section).
-
-
 ### Workflow
 
 1. **Select a map set** from the **Map set** drop-down (e.g. `01`, `02`, `07`). The app scans the `map/` directory automatically and loads the network immediately. Alternatively, type file paths manually and click **Load txt files**, or use **Select map files…** to browse.
 2. Choose **Origin** and **Destination** from the drop-down lists.
-3. Choose a **Preference** (`fastest`, `cheapest`, `fewest_segments`, or `fewest_transfers`).
-4. Set **Path index** to select which ranked journey to highlight on the graph (0 = best).
-5. Click **Compute route** — route summaries appear in the text area and the selected route is highlighted on the graph canvas in the colour of each transit line.
+3. Choose a **Preference** (`fastest`, `cheapest`, `fewest_stops`, or `fewest_transfers`).
+4. Click **Compute route** — the top-5 route summaries appear in the text area and route #1 is highlighted on the graph canvas in the colour of each transit line.
+5. Use **Route index** (below the graph) to switch which route is highlighted. The spinbox is enabled only after a route has been computed and accepts values 1–5, matching the `#1`–`#5` labels in the result area.
 
 ---
 
@@ -94,7 +88,18 @@ If `app.py` cannot be launched (e.g. due to a missing or incompatible `PyQt6` in
 python nv02.py
 ```
 
-On startup it loads `map/stop01.txt` and `map/seg01.txt`. The menu offers the same operations as the GUI:
+On startup, `nv02.py` first tries to load `stops.txt` and `segments.txt` from the current directory. If those files are not found it **automatically scans the `map/` subdirectory** for `stop*.txt` / `seg*.txt` pairs and lists them for selection:
+
+```
+No default network found.
+Auto-discovered map sets:
+  1. map set '01'  (map/stop01.txt)
+  2. map set '02'  (map/stop02.txt)
+  ...
+Load a map set (number) or press Enter to skip:
+```
+
+The menu offers the same operations as the GUI:
 
 ```
 1. List all stops
@@ -104,14 +109,16 @@ On startup it loads `map/stop01.txt` and `map/seg01.txt`. The menu offers the sa
 5. Exit
 ```
 
-To run the same test cases described below, choose **option 4** and enter the paths when prompted:
+**Option 4** also shows the auto-discovered map sets as numbered shortcuts, with `0` to fall back to manual path entry.
+
+When querying a journey (**option 2**), the preference prompt accepts either a number or the full name:
 
 ```
-Stops file path: map/stop07.txt
-Segments file path: map/seg07.txt
+Preference:  1. fastest  2. cheapest  3. fewest_stops  4. fewest_transfers
+Choose (1-4 or name):
 ```
 
-Then use **option 2** to query a journey and enter the origin, destination, and preference (`fastest`, `cheapest`, `fewest_segments`, or `fewest_transfers`).
+To run the test cases described below, select map set `07` at startup or via option 4, then use **option 2** and enter the origin, destination, and preference.
 
 > Note: `nv02.py` prints results as plain text and does not display a graph visualisation.
 
@@ -240,12 +247,12 @@ Top route is the MTR path `East Tsim Sha Tsui → Hong Kong [Tuen_Ma_Line] Hong 
 
 ---
 
-### Test 4 – Fewest segments
+### Test 4 – Fewest stops
 
-**Purpose:** Verify that the `fewest_segments` preference minimises the number of stops regardless of cost or time or transfers.
+**Purpose:** Verify that the `fewest_stops` preference minimises the number of stops regardless of cost or time or transfers.
 
 **Steps:**
-- Origin: `EAST_TST_MTR`, Destination: `KEN_MTR`, Preference: `fewest_segments`
+- Origin: `EAST_TST_MTR`, Destination: `KEN_MTR`, Preference: `fewest_stops`
 
 **Expected:** 
 #1: EAST_TST_MTR -> HUNG_HOM_MTR -> ADM_MTR -> CEN_MTR -> HKU_MTR -> KEN_MTR
@@ -265,7 +272,7 @@ Top route is the MTR path `East Tsim Sha Tsui → Hong Kong [Tuen_Ma_Line] Hong 
 
 ## Error Handling
 
-### Example 01 – Invalid input: same origin and destination
+### 01 – Invalid input: same origin and destination
 
 **Purpose:** Verify that the program handles invalid input gracefully without crashing.
 
@@ -274,13 +281,3 @@ Top route is the MTR path `East Tsim Sha Tsui → Hong Kong [Tuen_Ma_Line] Hong 
 - Click **Compute route**
 
 **Expected:** A warning dialog appears stating "Origin and destination must differ." No crash occurs.
-
-### Example 02 – Invalid map set: missing keys
-
-**Purpose:** Verify that the program handles invalid map set import
-
-**Steps:**
-- Choose map set 404 (a set missing the column for "line")
-
-**Expected:** 
-A warning dialog appears stating "Segments file '{segments_file}' is missing required column(s): , Expected columns: from, to, duration, cost, mode, line" No crash occurs.

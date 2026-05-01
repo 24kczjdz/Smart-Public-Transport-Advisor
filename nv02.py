@@ -1,5 +1,6 @@
 import argparse
 import csv
+import pathlib
 from collections import defaultdict
 
 # ------------------------------------------------------------
@@ -21,7 +22,7 @@ def parse_args(argv=None):
     parser.add_argument("--segments", default="segments.txt", help="Path to segments CSV file")
     parser.add_argument("--origin", help="Origin stop ID")
     parser.add_argument("--dest", help="Destination stop ID")
-    parser.add_argument("--preference", choices=["cheapest", "fastest", "fewest_segments", "fewest_transfers"], default="fastest",
+    parser.add_argument("--preference", choices=["cheapest", "fastest", "fewest_stops", "fewest_transfers"], default="fastest",
                         help="Journey preference")
     parser.add_argument("--max-paths", type=int, default=200, help="Maximum number of paths to find")
     parser.add_argument("--max-len", type=int, default=8, help="Maximum number of segments per path")
@@ -88,7 +89,34 @@ def load_network(stops_file, segments_file):
     return stops, graph
 
 # ------------------------------------------------------------
-# 2. Generate all simple paths using DFS (with duplicate prevention)
+# 2. Auto map discovery
+# ------------------------------------------------------------
+def scan_map_sets(base_dir=None):
+    """Scan for stop/segment file pairs in the map/ subdirectory.
+
+    Args:
+        base_dir: Base directory to search; defaults to the directory of this
+                  script when None.
+
+    Returns:
+        Sorted list of (suffix, stops_path, seg_path) tuples, e.g.
+        [('01', 'map/stop01.txt', 'map/seg01.txt'), ...].
+    """
+    if base_dir is None:
+        base_dir = pathlib.Path(__file__).resolve().parent
+    map_dir = pathlib.Path(base_dir) / "map"
+    if not map_dir.is_dir():
+        return []
+    results = []
+    for stop_file in sorted(map_dir.glob("stop*.txt")):
+        suffix = stop_file.stem[4:]   # strip leading 'stop'
+        seg_file = map_dir / f"seg{suffix}.txt"
+        if seg_file.exists():
+            results.append((suffix, str(stop_file), str(seg_file)))
+    return results
+
+# ------------------------------------------------------------
+# 3. Generate all simple paths using DFS (with duplicate prevention)
 # ------------------------------------------------------------
 def find_journeys(graph, origin, dest, max_len=8, max_paths=200):
     """Find all simple paths from origin to dest using depth-first search.
@@ -157,7 +185,7 @@ def rank_and_print(journeys, stops, origin, dest, preference, top_k=3):
         stops:      stops dict as returned by load_network.
         origin:     Starting stop ID (used for display).
         dest:       Destination stop ID (unused in output but kept for consistency).
-        preference: Sorting strategy – 'cheapest', 'fastest', or 'fewest_segments'.
+        preference: Sorting strategy – 'cheapest', 'fastest', or 'fewest_stops'.
         top_k:      Number of top journeys to display (default 3).
     """
     if not journeys:
@@ -181,7 +209,7 @@ def rank_and_print(journeys, stops, origin, dest, preference, top_k=3):
         scored.sort(key=lambda x: (x[0], x[1]))          # primary: time, secondary: cost
     elif preference == 'fewest_transfers':
         scored.sort(key=lambda x: (x[2], x[0]))          # primary: transfers, secondary: time
-    else:  # fewest_segments
+    else:  # fewest_stops
         scored.sort(key=lambda x: (len(x[3]), x[0]))     # primary: segment count, secondary: time
 
     def fmt(sid):
@@ -223,7 +251,22 @@ def main():
         stops, graph = load_network("stops.txt", "segments.txt")
         print(f"Loaded default network: {len(stops)} stops, {sum(len(v) for v in graph.values())} directed segments")
     except (FileNotFoundError, ValueError):
-        print("No default network found. Use option 4 to load a network file.")
+        print("No default network found.")
+        map_sets = scan_map_sets()
+        if map_sets:
+            print("Auto-discovered map sets:")
+            for i, (suffix, sp, _seg) in enumerate(map_sets, 1):
+                print(f"  {i}. map set '{suffix}'  ({sp})")
+            sel = input("Load a map set (number) or press Enter to skip: ").strip()
+            if sel.isdigit() and 1 <= int(sel) <= len(map_sets):
+                _, sp, seg = map_sets[int(sel) - 1]
+                try:
+                    stops, graph = load_network(sp, seg)
+                    print(f"Loaded: {len(stops)} stops, {sum(len(v) for v in graph.values())} directed segments")
+                except (FileNotFoundError, ValueError) as e:
+                    print(f"Error: {e}")
+        else:
+            print("Use option 4 to load a network file.")
 
     while True:
         print("\n" + "="*40)
@@ -251,8 +294,14 @@ def main():
             if origin == dest:
                 print("Error: origin and destination are the same")
                 continue
-            pref = input("Preference (cheapest/fastest/fewest_segments): ").strip().lower()
-            if pref not in ('cheapest', 'fastest', 'fewest_segments'):
+            _pref_options = ['fastest', 'cheapest', 'fewest_stops', 'fewest_transfers']
+            print("Preference:  1. fastest  2. cheapest  3. fewest_stops  4. fewest_transfers")
+            pref_raw = input("Choose (1-4 or name): ").strip().lower()
+            if pref_raw in ('1', '2', '3', '4'):
+                pref = _pref_options[int(pref_raw) - 1]
+            elif pref_raw in _pref_options:
+                pref = pref_raw
+            else:
                 pref = 'fastest'
                 print("Invalid preference, using 'fastest'")
 
@@ -268,8 +317,21 @@ def main():
             for mode, cnt in mode_cnt.items():
                 print(f"  {mode}: {cnt} segments")
         elif choice == '4':
-            new_stops_file = input("Stops file path: ").strip()
-            new_segs_file = input("Segments file path: ").strip()
+            map_sets = scan_map_sets()
+            if map_sets:
+                print("\nAuto-discovered map sets:")
+                for i, (suffix, sp, _seg) in enumerate(map_sets, 1):
+                    print(f"  {i}. map set '{suffix}'  ({sp})")
+                print("  0. Enter file paths manually")
+                sel = input("Select map set (0 to enter manually): ").strip()
+                if sel.isdigit() and 1 <= int(sel) <= len(map_sets):
+                    _, new_stops_file, new_segs_file = map_sets[int(sel) - 1]
+                else:
+                    new_stops_file = input("Stops file path: ").strip()
+                    new_segs_file = input("Segments file path: ").strip()
+            else:
+                new_stops_file = input("Stops file path: ").strip()
+                new_segs_file = input("Segments file path: ").strip()
             try:
                 new_stops, new_graph = load_network(new_stops_file, new_segs_file)
                 stops, graph = new_stops, new_graph
