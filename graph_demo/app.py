@@ -323,7 +323,7 @@ class GraphDemoApp(QMainWindow):
             return
 
         pref = self.pref_combo.currentText()
-        self.journeys = self.nv02.find_journeys(self.graph, origin, dest, max_len=50)
+        self.journeys = self.nv02.find_journeys(self.graph, origin, dest, max_len=8)
         if not self.journeys:
             QMessageBox.information(self, "No route", "No journey was found.")
             self.result_text.setPlainText("No journey found.")
@@ -345,21 +345,17 @@ class GraphDemoApp(QMainWindow):
             transfers = sum(1 for j in range(1, len(non_walk)) if non_walk[j][4] != non_walk[j-1][4])
             route = " -> ".join([origin] + [seg[0] for seg in path])
 
-            lines = [f"#{i}: {route}",
-                     f"  Time={duration} min, Cost=HKD {cost:.2f}, Transfers={transfers}, Segments={len(path)}", ""]
+            lines = [f"#{i}: {route} Time={duration} min, Cost=HKD {cost:.2f}, Transfers={transfers}, Segments={len(path)}", ""]
 
             prev_transit_line = None
             for seg in path:
                 stop_name, _ = self.stops[seg[0]]
                 mode, seg_line = seg[3], seg[4]
-                if mode == 'Walk':
-                    lines.append(f"  -> {stop_name:<22} [Walk]  {seg[1]} min")
-                else:
-                    # Insert transfer marker when the transit line changes
+                if mode != 'Walk':
                     if prev_transit_line is not None and seg_line != prev_transit_line:
-                        lines.append(f"  ~~ TRANSFER: {prev_transit_line} -> {seg_line}")
-                    lines.append(f"  -> {stop_name:<22} [{seg_line}]  {seg[1]} min  HKD {seg[2]:.2f}")
+                        lines.append(f"~~ TRANSFER: {prev_transit_line} -> {seg_line}")
                     prev_transit_line = seg_line
+                lines.append(f"-> {stop_name} [{seg_line}] {seg[1]} min HKD {seg[2]:.2f}")
 
             output.append("\n".join(lines))
         self.result_text.setPlainText("\n\n".join(output))
